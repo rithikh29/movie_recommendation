@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Movie Recommendation System</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 40px;
+      background-color: #f2f2f2;
+      text-align: center;
+    }
+
+    h1 {
+      margin-bottom: 30px;
+    }
+
+    select, button {
+      padding: 10px;
+      font-size: 16px;
+      margin: 10px;
+    }
+
+    .recommendations {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 30px;
+      flex-wrap: wrap;
+    }
+
+    .card {
+      background-color: #fff;
+      border-radius: 10px;
+      padding: 10px;
+      width: 150px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+
+    .card img {
+      width: 100%;
+      border-radius: 5px;
+    }
+
+    .movie-title {
+      margin-top: 10px;
+      font-weight: bold;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🎬 Movie Recommendation System</h1>
+
+  <select id="movieSelect">
+    <option>Loading movies...</option>
+  </select>
+
+  <button onclick="getRecommendations()">Get Recommendations</button>
+
+  <div class="recommendations" id="recommendationList">
+    <!-- Recommended movies will appear here -->
+  </div>
+
+  <script>
+    const apiBase = "http://127.0.0.1:5000";
+
+    // Load movies into the dropdown
+    fetch(`${apiBase}/movies`)
+      .then(res => res.json())
+      .then(data => {
+        const movieSelect = document.getElementById("movieSelect");
+        movieSelect.innerHTML = ""; // Clear default option
+        data.movies.forEach(movie => {
+          const option = document.createElement("option");
+          option.value = movie;
+          option.textContent = movie;
+          movieSelect.appendChild(option);
+        });
+      });
+
+    // Get recommendations and display them
+    function getRecommendations() {
+      const selectedMovie = document.getElementById("movieSelect").value;
+
+      fetch(`${apiBase}/recommend`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ movie: selectedMovie })
+      })
+        .then(res => res.json())
+        .then(data => {
+          const container = document.getElementById("recommendationList");
+          container.innerHTML = ""; // Clear previous results
+
+          if (data.recommended_movies && data.recommended_posters) {
+            data.recommended_movies.forEach((title, index) => {
+              const card = document.createElement("div");
+              card.className = "card";
+              card.innerHTML = `
+                <img src="${data.recommended_posters[index]}" alt="${title}">
+                <div class="movie-title">${title}</div>
+              `;
+              container.appendChild(card);
+            });
+          } else {
+            container.innerHTML = "<p>No recommendations found.</p>";
+          }
+        })
+        .catch(err => {
+          console.error(err);
+          alert("Error getting recommendations");
+        });
+    }
+  </script>
+</body>
+</html>
