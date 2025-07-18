@@ -11,7 +11,7 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-api=os.getenv("API_KEY")
+api=os.getenv("API_Key")
 
 # Load data
 movies = pickle.load(open('artifacts/movie_list.pkl', 'rb'))
