@@ -1,155 +1,280 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { Search, Film, ArrowRight } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
-import { ThemeToggle } from "@/components/theme-toggle"
+import { Loader2, Film, AlertCircle, Search, X } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
-export default function HomePage() {
+interface MovieRecommendation {
+  recommended_movies: string[]
+  recommended_posters: string[]
+}
+
+export default function MovieRecommendationSystem() {
   const [movies, setMovies] = useState<string[]>([])
-  const [selectedMovie, setSelectedMovie] = useState("")
-  const [searchTerm, setSearchTerm] = useState("")
-  const [loadingMovies, setLoadingMovies] = useState(true)
-  const [error, setError] = useState("")
-  const router = useRouter()
+  const [searchQuery, setSearchQuery] = useState<string>("")
+  const [selectedMovie, setSelectedMovie] = useState<string>("")
+  const [filteredMovies, setFilteredMovies] = useState<string[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [recommendations, setRecommendations] = useState<MovieRecommendation | null>(null)
+  const [isLoadingMovies, setIsLoadingMovies] = useState(true)
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false)
+  const [error, setError] = useState<string>("")
 
+  const searchRef = useRef<HTMLDivElement>(null)
   const apiBase = "https://moviebackend-8gld.onrender.com"
 
   // Load movies on component mount
   useEffect(() => {
-    fetch(`${apiBase}/movies`)
-      .then((res) => res.json())
-      .then((data) => {
+    const fetchMovies = async () => {
+      try {
+        setIsLoadingMovies(true)
+        setError("")
+        const response = await fetch(`${apiBase}/movies`)
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch movies")
+        }
+
+        const data = await response.json()
         setMovies(data.movies || [])
-        setLoadingMovies(false)
-      })
-      .catch((err) => {
-        console.error(err)
-        setError("Failed to load movies")
-        setLoadingMovies(false)
-      })
+      } catch (err) {
+        setError("Failed to load movies. Please try again later.")
+        console.error("Error fetching movies:", err)
+      } finally {
+        setIsLoadingMovies(false)
+      }
+    }
+
+    fetchMovies()
   }, [])
 
-  // Filter movies based on search term
-  const filteredMovies = movies.filter((movie) => movie.toLowerCase().includes(searchTerm.toLowerCase()))
+  // Filter movies based on search query
+  useEffect(() => {
+    if (searchQuery.trim() === "") {
+      setFilteredMovies([])
+      setShowSuggestions(false)
+      return
+    }
 
-  const selectMovie = (movie: string) => {
+    const filtered = movies.filter((movie) => movie.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 10) // Limit to 10 suggestions
+
+    setFilteredMovies(filtered)
+    setShowSuggestions(filtered.length > 0)
+  }, [searchQuery, movies])
+
+  // Handle clicking outside to close suggestions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // Handle movie selection from suggestions
+  const handleMovieSelect = (movie: string) => {
     setSelectedMovie(movie)
-    setSearchTerm("")
+    setSearchQuery(movie)
+    setShowSuggestions(false)
+    setRecommendations(null) // Clear previous recommendations
   }
 
-  const handleGetRecommendations = () => {
-    if (selectedMovie) {
-      router.push(`/recommendations?movie=${encodeURIComponent(selectedMovie)}`)
+  // Clear search and selection
+  const clearSearch = () => {
+    setSearchQuery("")
+    setSelectedMovie("")
+    setShowSuggestions(false)
+    setRecommendations(null)
+    setError("")
+  }
+
+  // Get recommendations for selected movie
+  const getRecommendations = async () => {
+    if (!selectedMovie) {
+      setError("Please search and select a movie first.")
+      return
+    }
+
+    try {
+      setIsLoadingRecommendations(true)
+      setError("")
+      setRecommendations(null)
+
+      const response = await fetch(`${apiBase}/recommend`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ movie: selectedMovie }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to get recommendations")
+      }
+
+      const data = await response.json()
+
+      if (data.recommended_movies && data.recommended_posters) {
+        setRecommendations(data)
+      } else {
+        setError("No recommendations found for this movie.")
+      }
+    } catch (err) {
+      setError("Failed to get recommendations. Please try again.")
+      console.error("Error getting recommendations:", err)
+    } finally {
+      setIsLoadingRecommendations(false)
     }
   }
 
   return (
-    <div className="min-h-screen relative">
-      <ThemeToggle />
-
-      {/* Background Pattern */}
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 dark:from-purple-900 dark:via-blue-900 dark:to-indigo-900 light:from-purple-100 light:via-blue-100 light:to-indigo-100"></div>
-        <div className="absolute inset-0 opacity-20">
-          <div className="h-full w-full bg-gradient-to-r from-transparent via-white/5 to-transparent transform -skew-y-12"></div>
-          <div className="absolute top-0 h-full w-full bg-gradient-to-b from-transparent via-white/3 to-transparent transform skew-x-12"></div>
-        </div>
-      </div>
-
-      <div className="relative z-10 container mx-auto px-4 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 py-8 px-4">
+      <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="p-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full">
-              <Film className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-white to-purple-200 dark:from-white dark:to-purple-200 light:from-gray-800 light:to-purple-600 bg-clip-text text-transparent">
-              CineMatch
-            </h1>
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <Film className="h-8 w-8 text-purple-600" />
+            <h1 className="text-4xl font-bold text-gray-800">Movie Recommendation System</h1>
           </div>
-          <p className="text-xl text-purple-200 dark:text-purple-200 light:text-purple-700 max-w-2xl mx-auto">
-            Discover your next favorite movie with AI-powered recommendations
-          </p>
+          <p className="text-gray-600 text-lg">Search for a movie and discover your next favorite films</p>
         </div>
 
-        {/* Movie Selection */}
-        <div className="max-w-2xl mx-auto mb-12">
-          <Card className="bg-white/10 dark:bg-white/10 light:bg-white/80 backdrop-blur-lg border-white/20 dark:border-white/20 light:border-gray-200 shadow-2xl">
-            <CardContent className="p-8">
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-white dark:text-white light:text-gray-800 font-medium mb-3 text-lg">
-                    Choose a movie you love
-                  </label>
-                  <div className="relative">
-                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-400 light:text-gray-600 w-5 h-5" />
-                    <Input
-                      type="text"
-                      placeholder={loadingMovies ? "Loading movies..." : "Search for a movie..."}
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-12 h-14 text-lg bg-white/20 dark:bg-white/20 light:bg-white/50 border-white/30 dark:border-white/30 light:border-gray-300 text-white dark:text-white light:text-gray-800 placeholder:text-gray-300 dark:placeholder:text-gray-300 light:placeholder:text-gray-500 focus:bg-white/30 dark:focus:bg-white/30 light:focus:bg-white/70 transition-all duration-300"
-                      disabled={loadingMovies}
-                    />
-                  </div>
-
-                  {/* Movie Suggestions */}
-                  {searchTerm && (
-                    <div className="mt-3 max-h-48 overflow-y-auto bg-white/20 dark:bg-white/20 light:bg-white/90 backdrop-blur-lg rounded-lg border border-white/20 dark:border-white/20 light:border-gray-200">
-                      {filteredMovies.slice(0, 8).map((movie, index) => (
-                        <button
-                          key={index}
-                          onClick={() => selectMovie(movie)}
-                          className="w-full text-left px-4 py-3 text-white dark:text-white light:text-gray-800 hover:bg-white/20 dark:hover:bg-white/20 light:hover:bg-gray-100 transition-colors duration-200 first:rounded-t-lg last:rounded-b-lg"
-                        >
-                          {movie}
-                        </button>
-                      ))}
-                      {filteredMovies.length === 0 && (
-                        <div className="px-4 py-3 text-gray-300 dark:text-gray-300 light:text-gray-600">
-                          No movies found
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {selectedMovie && (
-                  <div className="p-4 bg-gradient-to-r from-purple-500/20 to-pink-500/20 dark:from-purple-500/20 dark:to-pink-500/20 light:from-purple-200/50 light:to-pink-200/50 rounded-lg border border-purple-400/30 dark:border-purple-400/30 light:border-purple-300">
-                    <div className="flex items-center gap-2 text-white dark:text-white light:text-gray-800">
-                      <span className="font-medium">Selected:</span>
-                      <span className="text-purple-200 dark:text-purple-200 light:text-purple-700">
-                        {selectedMovie}
-                      </span>
-                    </div>
-                  </div>
+        {/* Movie Search */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
+            <div className="w-full sm:w-auto min-w-[400px] relative" ref={searchRef}>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  type="text"
+                  placeholder={isLoadingMovies ? "Loading movies..." : "Search for a movie..."}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => filteredMovies.length > 0 && setShowSuggestions(true)}
+                  disabled={isLoadingMovies}
+                  className="pl-10 pr-10"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={clearSearch}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 )}
-
-                <Button
-                  onClick={handleGetRecommendations}
-                  disabled={!selectedMovie}
-                  className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 group text-white"
-                >
-                  <div className="flex items-center gap-2">
-                    Get Recommendations
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" />
-                  </div>
-                </Button>
               </div>
-            </CardContent>
-          </Card>
+
+              {/* Search Suggestions */}
+              {showSuggestions && filteredMovies.length > 0 && (
+                <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-10 max-h-60 overflow-y-auto mt-1">
+                  {filteredMovies.map((movie, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleMovieSelect(movie)}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none border-b border-gray-100 last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Film className="h-4 w-4 text-gray-400" />
+                        <span className="truncate">{movie}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* No results message */}
+              {showSuggestions && filteredMovies.length === 0 && searchQuery.trim() !== "" && (
+                <div className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-10 mt-1">
+                  <div className="px-4 py-3 text-gray-500 text-center">No movies found matching "{searchQuery}"</div>
+                </div>
+              )}
+            </div>
+
+            <Button
+              onClick={getRecommendations}
+              disabled={!selectedMovie || isLoadingRecommendations || isLoadingMovies}
+              className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700"
+            >
+              {isLoadingRecommendations ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Getting Recommendations...
+                </>
+              ) : (
+                "Get Recommendations"
+              )}
+            </Button>
+          </div>
+
+          {/* Selected Movie Display */}
+          {selectedMovie && (
+            <div className="mt-4 text-center">
+              <p className="text-sm text-gray-600">
+                Selected movie: <span className="font-semibold text-purple-600">{selectedMovie}</span>
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Error Message */}
+        {/* Error Display */}
         {error && (
-          <div className="max-w-2xl mx-auto mb-8">
-            <div className="bg-red-500/20 border border-red-400/30 rounded-lg p-4 text-red-200 dark:text-red-200 light:text-red-700 text-center">
-              {error}
+          <Alert className="mb-6 border-red-200 bg-red-50">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-800">{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Loading State */}
+        {isLoadingRecommendations && (
+          <div className="text-center py-12">
+            <Loader2 className="h-12 w-12 animate-spin mx-auto text-purple-600 mb-4" />
+            <p className="text-gray-600 text-lg">Finding perfect recommendations for you...</p>
+          </div>
+        )}
+
+        {/* Recommendations Display */}
+        {recommendations && !isLoadingRecommendations && (
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Movies Similar to "{selectedMovie}"</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+              {recommendations.recommended_movies.map((title, index) => (
+                <Card key={index} className="overflow-hidden hover:shadow-xl transition-shadow duration-300">
+                  <CardContent className="p-0">
+                    <div className="aspect-[2/3] relative overflow-hidden">
+                      <img
+                        src={recommendations.recommended_posters[index] || "/placeholder.svg"}
+                        alt={title}
+                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.src = "/placeholder.svg?height=300&width=200&text=No+Image"
+                        }}
+                      />
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-semibold text-sm text-gray-800 text-center leading-tight">{title}</h3>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!recommendations && !isLoadingRecommendations && !error && (
+          <div className="text-center py-12">
+            <Search className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600 text-lg mb-2">Search for a movie to get started!</p>
+            <p className="text-gray-500 text-sm">
+              Type in the search box above to find movies and get personalized recommendations
+            </p>
           </div>
         )}
       </div>
